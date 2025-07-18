@@ -3,29 +3,42 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 
 const app = express();
-const port = process.env.PORT || 3000;
-const SHARED_SECRET = process.env.SHARED_SECRET;
+const PORT = process.env.PORT || 3000;
+const SHARED_SECRET = process.env.COINBASE_SECRET;
 
-app.use(bodyParser.raw({ type: 'application/json' }));
+// Middleware to parse raw body
+app.use(bodyParser.json({ verify: (req, res, buf) => {
+    req.rawBody = buf;
+}}));
 
-app.post('/webhook', (req, res) => {
-  const signature = req.headers['x-cc-webhook-signature'];
-  const payload = req.body;
+app.post('/coinbase', (req, res) => {
+    const signature = req.headers['x-cc-webhook-signature'];
+    const hmac = crypto.createHmac('sha256', SHARED_SECRET);
+    hmac.update(req.rawBody);
+    const expectedSig = hmac.digest('hex');
 
-  const hmac = crypto.createHmac('sha256', SHARED_SECRET);
-  hmac.update(payload);
-  const digest = hmac.digest('hex');
+    if (signature !== expectedSig) {
+        console.log('Invalid webhook signature');
+        return res.status(400).send('Invalid signature');
+    }
 
-  if (digest !== signature) {
-    return res.status(400).send('Invalid signature');
-  }
+    const event = req.body.event;
+    console.log('Webhook received:', event.type);
 
-  const data = JSON.parse(payload);
-  console.log('✅ Webhook received:', data);
+    // You can handle event types here
+    if (event.type === 'charge:confirmed') {
+        console.log('Payment confirmed for:', event.data.code);
+        // Add your logic here
+    }
 
-  res.status(200).send('OK');
+    res.sendStatus(200);
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+app.get('/', (req, res) => {
+    res.send('Velvet Webhook is running 🚀');
 });
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
